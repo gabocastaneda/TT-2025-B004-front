@@ -6,6 +6,7 @@ import cv2
 import sys
 import pickle
 import shutil
+import time  # Importación de la librería 'time'
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, 
                              QVBoxLayout, QHBoxLayout, QMessageBox, QLineEdit,
                              QPushButton, QFrame)
@@ -77,6 +78,7 @@ class DriveViewerApp(QMainWindow):
         self.video_timer.timeout.connect(self.mostrar_frame_video)
         self.ruta_actual = None
         self.nombre_archivo = nombre_archivo
+        self.start_time = None  # Se añade una variable para almacenar el tiempo de inicio
         
         self.initUI()
         self.autenticar()
@@ -186,6 +188,7 @@ class DriveViewerApp(QMainWindow):
         print(f"📊 Calidad (resolución total): {calidad} píxeles\n")
         
         # Reproducción de video
+        self.start_time = time.time()  # Se almacena el tiempo de inicio
         self.video_timer.start(30)  #Estandarización a 30 fps
     
     def mostrar_frame_video(self):
@@ -204,6 +207,12 @@ class DriveViewerApp(QMainWindow):
                 self.video_timer.stop()
                 self.cap.release()
                 self.cap = None
+                
+                # Cálculo y impresión del tiempo de reproducción
+                if self.start_time:
+                    end_time = time.time()
+                    elapsed_time = end_time - self.start_time
+                    print(f"Tiempo total de reproducción del video: {elapsed_time:.2f} segundos")
                 
                 # Espera de 2 segundos antes de borrar
                 QTimer.singleShot(2000, self.borrar_archivo_actual)

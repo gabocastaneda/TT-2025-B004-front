@@ -1,134 +1,187 @@
-import customtkinter as ctk
-from tkinter import Label
-from PIL import Image, ImageTk
+import sys
+import os
 import cv2
 from pathlib import Path
-from tkinter import font as tkfont
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QDesktopWidget, QWidget
+from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
+from PyQt5.QtCore import QSize, QTimer, Qt, pyqtSignal, QRect, QThread
+import time
 
-ctk.set_appearance_mode("light")
-ctk.set_default_color_theme("blue")
+class VideoThread(QThread):
+    change_pixmap_signal = pyqtSignal(QPixmap)
+    finished = pyqtSignal()
+    
+    def __init__(self, cap, loop=False):
+        super().__init__()
+        self._run_flag = True
+        self.cap = cap
+        self.loop = loop
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
 
-root = ctk.CTk()
-root.title("Ventana de Interacción")
+    def run(self):
+        while self._run_flag:
+            start_time = time.time()
+            ret, frame = self.cap.read()
+            if ret:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = frame_rgb.shape
+                bytes_per_line = ch * w
+                qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                self.change_pixmap_signal.emit(QPixmap.fromImage(qt_image))
+                elapsed_time = time.time() - start_time
+                sleep_time = (1.0 / self.fps) - elapsed_time
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            elif self.loop:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0) # Loop video
+            else:
+                self._run_flag = False
+        self.finished.emit()
 
-base_dir = Path(__file__).parent if '__file__' in globals() else Path.cwd()
-image_path = base_dir.parent / 'images' / 'fondo2.png'
-try:
-    bg_image_original = Image.open(image_path)
-except Exception as e:
-    print(f"Error cargando imagen de fondo: {e}")
-    bg_image_original = None
+    def stop(self):
+        self._run_flag = False
+        self.wait()
 
-screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
+class InteractionWindow(QMainWindow):
+    resized = pyqtSignal()
+    
+    def __init__(self, video_path):
+        super().__init__()
+        self.setWindowTitle("Ventana de Interacción")
+        self.setWindowIcon(QIcon())
+        
+        self.cap_camera = cv2.VideoCapture(0)
+        
+        self.video_path = video_path
+        self.cap_drive_video = None
+        self.drive_video_thread = None
+        self.initUI()
+        self.timer_camera = QTimer(self)
+        self.timer_camera.timeout.connect(self.update_camera_frame)
+        self.timer_camera.start(10)
+        self.start_drive_video()
 
-barra_alto = int(screen_height * 0.1)
-fondo_alto = screen_height - barra_alto
+    def initUI(self):
+        screen_geo = QDesktopWidget().screenGeometry()
+        self.screen_width = screen_geo.width()
+        self.screen_height = screen_geo.height()
+        self.barra_alto = int(self.screen_height * 0.1)
+        self.setGeometry(0, 0, self.screen_width, self.screen_height)
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+        self.barra_superior = QFrame(self.central_widget)
+        self.barra_superior.setStyleSheet("background-color: #1881d7;")
+        self.titulo_label = QLabel("TT 2025-B004", self.barra_superior)
+        self.titulo_label.setAlignment(Qt.AlignCenter)
+        self.titulo_label.setStyleSheet("color: white;")
+        font = QFont("Arial", 20, QFont.Bold, italic=True)
+        self.titulo_label.setFont(font)
+        self.fondo_label = QLabel(self.central_widget)
+        self.fondo_label.setScaledContents(True)
+        self.fondo_label.lower()
+        self.recuadro_video1 = QFrame(self.central_widget)
+        self.recuadro_video1.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 10px solid #F3D05C;
+                border-radius: 10px;
+            }
+        """)
+        self.video_label1 = QLabel(self.recuadro_video1)
+        self.video_label1.setAlignment(Qt.AlignCenter)
+        self.recuadro_video2 = QFrame(self.central_widget)
+        self.recuadro_video2.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 10px solid #F3D05C;
+                border-radius: 10px;
+            }
+        """)
+        self.video_label2 = QLabel(self.recuadro_video2)
+        self.video_label2.setAlignment(Qt.AlignCenter)
+        self.resized.connect(self.update_layout)
+        self.update_layout()
 
-root.geometry(f"{screen_width}x{screen_height}")
-root.resizable(True, True)
+    def resizeEvent(self, event):
+        self.resized.emit()
+        super().resizeEvent(event)
 
-# Barra superior azul
-barra_superior = ctk.CTkFrame(root, fg_color="#1881d7", height=barra_alto, corner_radius=0)
-barra_superior.pack(fill='x')
+    def update_layout(self):
+        w = self.width()
+        h = self.height()
+        barra_h = int(h * 0.1)
+        
+        self.barra_superior.setGeometry(0, 0, w, barra_h)
+        self.titulo_label.setGeometry(0, 0, w, barra_h)
+        
+        base_dir = Path(__file__).parent if '__file__' in globals() else Path.cwd()
+        image_path = base_dir.parent / 'images' / 'fondo2.png'
+        try:
+            bg_image_original = QPixmap(str(image_path))
+            if not bg_image_original.isNull():
+                bg_img_scaled = bg_image_original.scaled(w, h - barra_h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                self.fondo_label.setPixmap(bg_img_scaled)
+                self.fondo_label.setGeometry(0, barra_h, w, h - barra_h)
+                self.fondo_label.lower()
+        except Exception as e:
+            print(f"Error loading background image: {e}")
+        
+        margen_izq = int(w * 0.05)
+        margen_der = int(w * 0.05)
+        separacion = int(w * 0.05)
+        area_util_ancho = w - margen_izq - margen_der
+        
+        recuadro_width = (area_util_ancho - separacion) // 2
+        recuadro_height = int(recuadro_width * 0.75)
+        
+        video_y = int(h * 0.25)
+        video1_x = margen_izq
+        video2_x = margen_izq + recuadro_width + separacion
+        
+        self.recuadro_video1.setGeometry(video1_x, video_y, recuadro_width, recuadro_height)
+        self.recuadro_video2.setGeometry(video2_x, video_y, recuadro_width, recuadro_height)
+        self.video_label1.setGeometry(10, 10, recuadro_width - 20, recuadro_height - 20)
+        self.video_label2.setGeometry(10, 10, recuadro_width - 20, recuadro_height - 20)
 
-fuente_barra = tkfont.Font(family="Arial", size=20, weight="bold", slant="italic")
-# Etiqueta de texto centrada en la barra azul
-titulo_label = Label(
-    barra_superior,
-    text="TT 2025-B004",  # Puedes cambiar este texto
-    font=fuente_barra,
-    bg="#1881d7",
-    fg="white"
-)
-titulo_label.place(relx=0.5, rely=0.5, anchor="center")
+    def update_camera_frame(self):
+        if not self.cap_camera.isOpened():
+            return
+            
+        ret, frame = self.cap_camera.read()
+        if ret:
+            frame = cv2.flip(frame, 1)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = frame_rgb.shape
+            bytes_per_line = ch * w
+            qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(qt_image)
+            scaled_pixmap = pixmap.scaled(self.video_label1.width(), self.video_label1.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.video_label1.setPixmap(scaled_pixmap)
 
-# Fondo
-fondo_label = Label(root)
-fondo_label.place(x=0, y=barra_alto)
-bg_photo = [None]
+    def start_drive_video(self):
+        if not self.video_path:
+            self.video_label2.setText("Error al cargar el video")
+            return
+            
+        self.cap_drive_video = cv2.VideoCapture(self.video_path)
+        
+        if not self.cap_drive_video.isOpened():
+            self.video_label2.setText("Error al abrir el video")
+            return
 
-def actualizar_fondo(event=None):
-    w = root.winfo_width()
-    h = root.winfo_height()
-    fondo_h = h - int(h * 0.1)
-    barra = int(h * 0.1)
-    if bg_image_original:
-        bg_img = bg_image_original.resize((w, fondo_h))
-        bg_photo[0] = ImageTk.PhotoImage(bg_img)
-        fondo_label.configure(image=bg_photo[0])
-        fondo_label.image = bg_photo[0]
-        fondo_label.place(x=0, y=barra, width=w, height=fondo_h)
-        fondo_label.lower()
+        self.drive_video_thread = VideoThread(self.cap_drive_video, loop=True)
+        self.drive_video_thread.change_pixmap_signal.connect(self.update_drive_video_image)
+        self.drive_video_thread.start()
 
-root.bind("<Configure>", actualizar_fondo)
+    def update_drive_video_image(self, image):
+        self.video_label2.setPixmap(image.scaled(self.video_label2.width(), self.video_label2.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
-# Márgenes y separación
-margen_izq = int(screen_width * 0.05)
-margen_der = int(screen_width * 0.05)
-separacion = int(screen_width * 0.05)
-area_util_ancho = screen_width - margen_izq - margen_der
-
-# Tamaño fijo para ambos recuadros
-recuadro_width = (area_util_ancho - separacion) // 2
-recuadro_height = int(recuadro_width * 0.75)
-
-video_y = int(screen_height * 0.25)
-video1_x = margen_izq
-video2_x = margen_izq + recuadro_width + separacion
-
-# Recuadro del video (cámara)
-recuadro_video1 = ctk.CTkFrame(
-    root,
-    width=recuadro_width,
-    height=recuadro_height,
-    corner_radius=10,
-    border_width=10,
-    border_color="#F3D05C",
-    fg_color="white"
-)
-recuadro_video1.place(x=video1_x, y=video_y)
-
-video_label = Label(recuadro_video1, bg="white")
-video_label.place(relx=0.5, rely=0.5, anchor="center", width=recuadro_width - 20, height=recuadro_height - 20)
-
-# Segundo recuadro (estático o para otro contenido)
-recuadro_video2 = ctk.CTkFrame(
-    root,
-    width=recuadro_width,
-    height=recuadro_height,
-    corner_radius=10,
-    border_width=10,
-    border_color="#F3D05C",
-    fg_color="white"
-)
-recuadro_video2.place(x=video2_x, y=video_y)
-
-recuadro_video1.lift()
-recuadro_video2.lift()
-
-# Captura de video
-cap = cv2.VideoCapture(0)
-
-def mostrar_frame():
-    ret, frame = cap.read()
-    if ret:
-        frame = cv2.flip(frame, 1)
-        label_w = recuadro_width - 20
-        label_h = recuadro_height - 20
-        frame = cv2.resize(frame, (label_w, label_h))
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        imagen = Image.fromarray(frame)
-        imgtk = ImageTk.PhotoImage(imagen)
-        video_label.imgtk = imgtk
-        video_label.configure(image=imgtk)
-    root.after(10, mostrar_frame)
-
-mostrar_frame()
-
-def cerrar():
-    cap.release()
-    root.destroy()
-
-root.protocol("WM_DELETE_WINDOW", cerrar)
-root.mainloop()
+    def closeEvent(self, event):
+        if self.cap_camera:
+            self.cap_camera.release()
+        if self.drive_video_thread:
+            self.drive_video_thread.stop()
+        if self.cap_drive_video:
+            self.cap_drive_video.release()
+        self.timer_camera.stop()
+        event.accept()
