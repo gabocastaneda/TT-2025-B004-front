@@ -3,9 +3,9 @@ import os
 import requests
 import tempfile
 import atexit
+import time
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
-import time
 
 from bienvenida import WelcomeWindow
 from respuesta_unica_4 import VideoPlayerWindow
@@ -21,9 +21,12 @@ class VideoDownloader(QThread):
 
     def run(self):
         print("Starting silent download of videos...")
+        total_download_start_time = time.time()
+        
         for name, url in self.video_urls.items():
+            start_time = time.time()
             try:
-                print(f"Attempting to download video '{name}' from: {url}")
+                print(f"Attempting to download video '{name}'...")
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 response = requests.get(url, stream=True)
                 response.raise_for_status()
@@ -31,7 +34,10 @@ class VideoDownloader(QThread):
                     temp_file.write(chunk)
                 self.video_paths[name] = temp_file.name
                 temp_file.close()
-                print(f"Video '{name}' downloaded to: {self.video_paths[name]}")
+                end_time = time.time()
+                download_time = end_time - start_time
+                print(f"Video '{name}' downloaded successfully to: {self.video_paths[name]}")
+                print(f"Time to download '{name}': {download_time:.4f} seconds.")
                 atexit.register(os.unlink, self.video_paths[name])
             except requests.exceptions.HTTPError as err:
                 print(f"HTTP Error for '{name}': {err}")
@@ -39,19 +45,24 @@ class VideoDownloader(QThread):
             except Exception as e:
                 print(f"Other Error for '{name}': {e}")
                 self.video_paths[name] = None
-        print("All downloads complete. Emitting finished signal.")
+                
+        total_download_end_time = time.time()
+        total_download_time = total_download_end_time - total_download_start_time
+        print(f"\n--- Tiempo total de descarga: {total_download_time:.4f} seconds. ---\n")
         self.finished.emit(self.video_paths)
 
 class ApplicationManager:
 
     def __init__(self):
         self.app = QApplication(sys.argv)
+        self.app_start_time = time.time()  # Start time of the application
         self.video_paths = {}
         self.current_window = None
+        self.last_transition_start = None
         self.video_urls = {
-            'welcome': 'https://www.googleapis.com/drive/v3/files/1wPu1sCICiGd0vlSgCpNiYffaM_yEtx4K?alt=media&key=AIzaSyAWW-xLcA9ZMiFZLUyHODYT9KMKTUf7RiU',
-            'player': 'https://www.googleapis.com/drive/v3/files/1X913T6IvBezORm7lXkyMVDfygKHh2aty?alt=media&key=AIzaSyAWW-xLcA9ZMiFZLUyHODYT9KMKTUf7RiU',
-            'interaction': 'https://www.googleapis.com/drive/v3/files/1WetNlQgjLCpBz6ATuazyi8QkJNufReub?alt=media&key=AIzaSyAWW-xLcA9ZMiFZLUyHODYT9KMKTUf7RiU'
+            'welcome': 'https://www.googleapis.com/drive/v3/files/1X913T6IvBezORm7lXkyMVDfygKHh2aty?alt=media&key=AIzaSyCPQezDLouT6Lwc0JHG6QpxWPrukz_2Jac',
+            'player': 'https://www.googleapis.com/drive/v3/files/1X913T6IvBezORm7lXkyMVDfygKHh2aty?alt=media&key=AIzaSyCPQezDLouT6Lwc0JHG6QpxWPrukz_2Jac',
+            'interaction': 'https://www.googleapis.com/drive/v3/files/1X913T6IvBezORm7lXkyMVDfygKHh2aty?alt=media&key=AIzaSyCPQezDLouT6Lwc0JHG6QpxWPrukz_2Jac'
         }
         self.start_download()
 
@@ -62,19 +73,28 @@ class ApplicationManager:
 
     def on_download_finished(self, video_paths):
         self.video_paths = video_paths
+        total_startup_time = time.time() - self.app_start_time
+        print(f"--- Tiempo total de descarga de videos e inicio de la aplicación: {total_startup_time:.4f} seconds. ---\n")
+        
+        # Inicia la primera transición y mide el tiempo
+        self.last_transition_start = time.time() 
         self.show_welcome_screen()
 
     def show_welcome_screen(self):
+
         video_path = self.video_paths.get('welcome')
         self.current_window = WelcomeWindow(video_path)
-        self.current_window.video_finished.connect(self.show_video_player_screen)
+        self.current_window.video_finished.connect(self.request_video_player_screen)
         self.current_window.show()
 
+    def request_video_player_screen(self):
+        self.show_video_player_screen()
+
     def show_video_player_screen(self):
-        print("Transición a la pantalla del video.")
+
         video_path = self.video_paths.get('player')
         new_window = VideoPlayerWindow(video_path)
-        new_window.transition_requested.connect(self.show_interaction_screen)
+        new_window.transition_requested.connect(self.request_interaction_screen)
         new_window.show()
 
         if self.current_window:
@@ -84,8 +104,11 @@ class ApplicationManager:
         else:
             self.current_window = new_window
 
+    def request_interaction_screen(self):
+        self.show_interaction_screen()
+
     def show_interaction_screen(self):
-        print("Transición a la pantalla de interacción.")
+        print("Showing Interaction Screen (Final State).")
         video_path = self.video_paths.get('interaction')
         new_window = InteractionWindow(video_path)
         new_window.show()

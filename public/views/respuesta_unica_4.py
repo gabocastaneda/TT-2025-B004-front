@@ -142,13 +142,17 @@ class VideoPlayerWindow(QMainWindow):
         self.cap = cv2.VideoCapture(self.video_path)
         fps = self.cap.get(cv2.CAP_PROP_FPS)
         total_frames = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-        if fps > 0:
+        
+        # --- Cálculo e impresión de la duración del video ---
+        if fps > 0 and total_frames > 0:
             duration_sec = total_frames / fps
             minutes = int(duration_sec // 60)
             seconds = int(duration_sec % 60)
-            print(f"Duración del video: {minutes:02d}:{seconds:02d}")
+            print(f"Video 'player' duration: {minutes:02d}:{seconds:02d} ({duration_sec:.2f} sec)")
         else:
-            print("Duración del video: No disponible")
+            print("Video 'player' duration: Not available (FPS or Frame Count is zero).")
+        # ----------------------------------------------------
+        
         print(f"Detected FPS: {fps}")
 
         self.start_time = time.time()
@@ -163,7 +167,7 @@ class VideoPlayerWindow(QMainWindow):
     def end_playback(self):
         end_time = time.time()
         total_playback_time = end_time - self.start_time
-        print(f"Tiempo total de reproducción: {total_playback_time:.2f} segundos. Iniciando transición...")
+        print(f"\n--- Video playback finished. Total actual playback time: {total_playback_time:.2f} seconds. Iniciando transición... ---")
 
         if hasattr(self, 'video_thread'):
             self.video_thread.stop()

@@ -169,6 +169,18 @@ class InteractionWindow(QMainWindow):
             self.video_label2.setText("Error al abrir el video")
             return
 
+        # --- Cálculo e impresión de la duración del video ---
+        fps = self.cap_drive_video.get(cv2.CAP_PROP_FPS)
+        total_frames = self.cap_drive_video.get(cv2.CAP_PROP_FRAME_COUNT)
+        if fps > 0 and total_frames > 0:
+            duration_sec = total_frames / fps
+            minutes = int(duration_sec // 60)
+            seconds = int(duration_sec % 60)
+            print(f"Video 'interaction' (loop) duration: {minutes:02d}:{seconds:02d} ({duration_sec:.2f} sec)")
+        else:
+            print("Video 'interaction' (loop) duration: Not available (FPS or Frame Count is zero).")
+        # ----------------------------------------------------
+
         self.drive_video_thread = VideoThread(self.cap_drive_video, loop=True)
         self.drive_video_thread.change_pixmap_signal.connect(self.update_drive_video_image)
         self.drive_video_thread.start()

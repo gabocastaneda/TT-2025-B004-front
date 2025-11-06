@@ -171,6 +171,18 @@ class WelcomeWindow(QMainWindow):
             self.video_finished.emit()
             return
         
+        # --- Cálculo e impresión de la duración del video ---
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        total_frames = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        if fps > 0 and total_frames > 0:
+            duration_sec = total_frames / fps
+            minutes = int(duration_sec // 60)
+            seconds = int(duration_sec % 60)
+            print(f"Video 'welcome' duration: {minutes:02d}:{seconds:02d} ({duration_sec:.2f} sec)")
+        else:
+            print("Video 'welcome' duration: Not available (FPS or Frame Count is zero).")
+        # ----------------------------------------------------
+
         self.video_thread = VideoThread(self.cap)
         self.video_thread.change_pixmap_signal.connect(self.update_image)
         self.video_thread.finished.connect(self.end_playback)
@@ -180,7 +192,7 @@ class WelcomeWindow(QMainWindow):
         self.video_label.setPixmap(image.scaled(self.video_label.width(), self.video_label.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def end_playback(self):
-        print("Video playback finished.")
+        print("Video playback finished for Welcome Screen.")
         self.video_finished.emit()
 
     def closeEvent(self, event):
