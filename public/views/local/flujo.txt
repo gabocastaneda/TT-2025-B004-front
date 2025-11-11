@@ -1,0 +1,8 @@
+
+INICIO FLUJO: 2025-11-10 09:51:01
+[09:50:46] Palabra clave: hola
+[09:50:48] Palabra clave: adios
+[09:50:51] Palabra clave: precio
+[09:50:53] Comando: 3
+[09:51:01] Comando: 4
+FIN

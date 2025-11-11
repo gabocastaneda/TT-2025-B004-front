@@ -20,13 +20,23 @@ class HiloVideo(QThread):
     def run(self):
         while self._bandera_ejecucion:
             tiempo_inicio = time.time()
+            
+            if not self._bandera_ejecucion or not self.cap.isOpened():
+                break
+
             ret, marco = self.cap.read()
             if ret:
+                if not self._bandera_ejecucion:
+                    break
+
                 marco = cv2.flip(marco, 1) 
                 marco_rgb = cv2.cvtColor(marco, cv2.COLOR_BGR2RGB)
                 h, w, ch = marco_rgb.shape
                 bytes_por_linea = ch * w
                 imagen_qt = QImage(marco_rgb.data, w, h, bytes_por_linea, QImage.Format_RGB888)
+                
+                if not self._bandera_ejecucion:
+                    break
                 self.senal_cambio_pixmap.emit(QPixmap.fromImage(imagen_qt))
 
                 tiempo_transcurrido = time.time() - tiempo_inicio
@@ -34,6 +44,8 @@ class HiloVideo(QThread):
                 if tiempo_espera > 0:
                     time.sleep(tiempo_espera)
             elif self.bucle:
+                if not self._bandera_ejecucion:
+                    break
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             else:
                 self._bandera_ejecucion = False

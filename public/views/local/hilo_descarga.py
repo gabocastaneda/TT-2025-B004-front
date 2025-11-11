@@ -2,7 +2,7 @@ import sys
 import os
 import time
 import requests
-import re # Necesario para extraer el ID y el token de confirmación
+import re 
 import shutil
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from pathlib import Path

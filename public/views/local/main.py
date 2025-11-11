@@ -2,9 +2,12 @@ import sys
 import os
 from pathlib import Path
 import atexit
+import datetime
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer, Qt
 import time
+import requests 
+import traceback 
 
 dir_actual = Path(__file__).resolve().parent
 if str(dir_actual) not in sys.path:
@@ -24,7 +27,8 @@ class HiloEntrada(QThread):
         print("\n----------------------------------------------------")
         print("1: Regresar a Ventana de Bienvenida")
         print("2: Regresar a Ventana de Respuesta Única")
-        print("3: Salir de la aplicación")
+        print("3: Enviar seguimiento")
+        print("4: Salir de la aplicación")
         print("Palabras clave:")
         print("hola")
         print("adios")
@@ -32,18 +36,18 @@ class HiloEntrada(QThread):
         print("----------------------------------------------------")
         
         while True:
-            comando_str = input("Ingrese un comando (1, 2, 3) o palabra clave: ")
+            comando_str = input("Ingrese un comando (1, 2, 3, 4) o palabra clave: ")
             
             try:
                 comando_int = int(comando_str)
                 
-                if comando_int in [1, 2]:
+                if comando_int in [1, 2, 3]:
                     self.senal_comando_recibido.emit(comando_int)
-                elif comando_int == 3:
-                    self.senal_comando_recibido.emit(3)
+                elif comando_int == 4:
+                    self.senal_comando_recibido.emit(4)
                     break
                 else:
-                    print(f"Comando numérico '{comando_int}' no reconocido. Intente 1, 2, 3")
+                    print(f"Comando numérico '{comando_int}' no reconocido. Intente 1, 2, 3, 4")
             
             except ValueError:
                 if comando_str:
@@ -57,6 +61,9 @@ class GestorAplicacion:
         self.app = app
         self.ventana_actual = None
         self.inicio_ultima_transicion = None
+        self.flujo_comandos = []  
+        self.telegram_bot_token = "8098637530:AAFSHF5JwzS6ji0EpF05fpiYOsePkrZO0RA" 
+        self.telegram_chat_id = "6603213375" 
         
         dir_base = Path(__file__).resolve().parent
         
@@ -74,7 +81,6 @@ class GestorAplicacion:
 
             'local_dos': self.rutas_video.get('interaccion_2')
         }
-        # ------------------------------------
 
         self.hilo_entrada = HiloEntrada()
         self.hilo_entrada.senal_comando_recibido.connect(self.manejar_comando_entrada)
@@ -83,6 +89,9 @@ class GestorAplicacion:
         self.hilo_entrada.start()
 
     def manejar_palabra_clave(self, palabra_clave):
+        timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+        self.flujo_comandos.append(f"[{timestamp}] Palabra clave: {palabra_clave}")
+        
         if not isinstance(self.ventana_actual, VentanaInteraccion):
             print(f"Palabra clave '{palabra_clave}' ignorada (espere a la ventana de interacción).")
             return
@@ -99,6 +108,8 @@ class GestorAplicacion:
 
 
     def manejar_comando_entrada(self, comando):
+        timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+        self.flujo_comandos.append(f"[{timestamp}] Comando: {comando}")
         
         if comando == 1:
             self.mostrar_pantalla_bienvenida() 
@@ -107,8 +118,38 @@ class GestorAplicacion:
             self.mostrar_pantalla_reproductor_video()
             return
         elif comando == 3:
+            self.enviar_seguimiento_telegram()
+            return
+        elif comando == 4:
             QTimer.singleShot(100, self.app.quit)
             return
+
+    def enviar_seguimiento_telegram(self):
+        print("Iniciando envío de seguimiento por Telegram...")
+
+        mensaje_flujo = "\n".join(self.flujo_comandos)
+        mensaje_completo = f"-Seguimiento-\n\n{mensaje_flujo}"
+
+        url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+        payload = {
+            'chat_id': self.telegram_chat_id,
+            'text': mensaje_completo
+        }
+
+        try:
+            response = requests.post(url, data=payload, timeout=10)
+            
+            if response.status_code == 200:
+                print("Notificación enviada.")
+            else:
+                print(f"Error al enviar: {response.status_code}")
+                print(response.text)
+
+        except requests.exceptions.ConnectionError:
+            print("ERROR: No se pudo conectar a Internet para enviar la notificación.")
+        except Exception as e:
+            print("ERROR: Falla desconocida al enviar notificación.")
+            traceback.print_exc()
 
 
     def mostrar_pantalla_bienvenida(self):
@@ -181,6 +222,25 @@ class GestorAplicacion:
             
         self.inicio_ultima_transicion = time.time()
 
+    def _guardar_flujo_al_salir(self):        
+        ruta_archivo = Path(__file__).resolve().parent / 'flujo.txt'        
+        try:
+            with open(ruta_archivo, 'a', encoding='utf-8') as f:
+                
+                timestamp_sesion = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"\nINICIO FLUJO: {timestamp_sesion}\n")
+                
+                if not self.flujo_comandos:
+                    f.write("No se registraron entradas.\n")
+                else:
+                    for linea in self.flujo_comandos:
+                        f.write(f"{linea}\n")
+                        
+                f.write("FIN\n")
+            print(f"Flujo guardado en {ruta_archivo}")
+        except Exception as e:
+            print(f"ERROR: No se pudo guardar el flujo: {e}")
+
     def run(self):
         self.mostrar_pantalla_bienvenida()
         sys.exit(self.app.exec_())
@@ -188,4 +248,7 @@ class GestorAplicacion:
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     gestor = GestorAplicacion(app)
+    
+    atexit.register(gestor._guardar_flujo_al_salir)
+    
     gestor.run()

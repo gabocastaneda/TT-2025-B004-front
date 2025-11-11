@@ -123,7 +123,6 @@ class VentanaReproductorVideo(QMainWindow):
             print(f"Calidad: {ancho}x{alto}")
         else:
             print("Propiedades: No disponibles")
-        # --------------------------------------------------
 
         self.tiempo_inicio_reproduccion = time.time()
         self.hilo_video = HiloVideo(self.cap)
